@@ -1,0 +1,48 @@
+# Core Dependencies
+# -----------------
+
+# HTTP requests for API calls to OpenRouter
+requests>=2.31.0
+
+# Data manipulation and analysis
+# pandas 2.2+ has better performance and datetime handling
+pandas>=2.2.2
+
+# CLI Visualization Dependencies
+# ------------------------------
+
+# Matplotlib for basic plotting in CLI
+# Version 3.8+ has better performance and bug fixes
+matplotlib>=3.8.4
+
+# Seaborn for enhanced statistical plots
+# Works with matplotlib, provides better default styles
+seaborn>=0.13.2
+
+# Web Interface Dependencies
+# --------------------------
+
+# Streamlit for web application framework
+# Version 1.40+ has improved performance and stability
+streamlit>=1.40.0
+
+# Plotly for interactive web charts
+# Better than matplotlib for web interactions
+plotly>=5.18.0
+
+# Testing Dependencies
+# --------------------
+
+# Testing framework
+pytest>=8.0.0
+
+# Coverage reporting
+pytest-cov>=4.1.0
+
+# Optional Dependencies (not included by default)
+# -----------------------------------------------
+# python-dotenv  # For .env file support
+# pytest-watch   # For auto-rerunning tests
+# black          # For code formatting
+# mypy           # For type checking
+streamlit-option-menu 

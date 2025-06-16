@@ -1,0 +1,63 @@
+{
+  "success_water": {
+    "choices": [{
+      "message": {
+        "content": "[{\"activity\": \"Water\", \"quantity\": 500, \"unit\": \"ml\"}]"
+      }
+    }]
+  },
+  "success_multiple": {
+    "choices": [{
+      "message": {
+        "content": "[{\"activity\": \"Water\", \"quantity\": 750, \"unit\": \"ml\"}, {\"activity\": \"Walk\", \"quantity\": 2.5, \"unit\": \"km\"}]"
+      }
+    }]
+  },
+  "success_all_types": {
+    "choices": [{
+      "message": {
+        "content": "[{\"activity\": \"Water\", \"quantity\": 500, \"unit\": \"ml\"}, {\"activity\": \"Walk\", \"quantity\": 3, \"unit\": \"km\"}, {\"activity\": \"Food\", \"quantity\": 1, \"unit\": \"meal\"}, {\"activity\": \"Cannabis\", \"quantity\": 1, \"unit\": \"joint\"}, {\"activity\": \"Cigarette\", \"quantity\": 2, \"unit\": \"unit\"}, {\"activity\": \"Alcohol\", \"quantity\": 2, \"unit\": \"drinks\"}, {\"activity\": \"Sex\", \"quantity\": 1, \"unit\": \"session\"}]"
+      }
+    }]
+  },
+  "empty_response": {
+    "choices": [{
+      "message": {
+        "content": "[]"
+      }
+    }]
+  },
+  "invalid_json": {
+    "choices": [{
+      "message": {
+        "content": "This is not valid JSON format"
+      }
+    }]
+  },
+  "missing_fields": {
+    "choices": [{
+      "message": {}
+    }]
+  },
+  "partial_data": {
+    "choices": [{
+      "message": {
+        "content": "[{\"activity\": \"Water\"}]"
+      }
+    }]
+  },
+  "http_error_429": {
+    "error": {
+      "message": "Rate limit exceeded",
+      "type": "rate_limit_error",
+      "code": 429
+    }
+  },
+  "http_error_500": {
+    "error": {
+      "message": "Internal server error",
+      "type": "server_error",
+      "code": 500
+    }
+  }
+}

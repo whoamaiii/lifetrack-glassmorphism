@@ -1,0 +1,108 @@
+[run]
+# Coverage.py configuration for Personal Life Tracker
+
+# Source files to measure
+source = .
+
+# Files and directories to exclude from coverage
+omit =
+    # Test files
+    */tests/*
+    */test_*.py
+    *_test.py
+    
+    # Virtual environments
+    */venv/*
+    */env/*
+    */.venv/*
+    */virtualenv/*
+    
+    # Setup and configuration
+    setup.py
+    */setup.py
+    
+    # Cache and temporary files
+    */__pycache__/*
+    *.pyc
+    
+    # Documentation
+    */docs/*
+    
+    # Scripts
+    */scripts/*
+    */bin/*
+    
+    # Example and sample files
+    */examples/*
+    */samples/*
+
+# Use branch coverage
+branch = True
+
+# Parallel execution support
+parallel = True
+
+# Context for coverage
+context = test
+
+[report]
+# Reporting options
+
+# Skip files with no executable code
+skip_empty = True
+
+# Precision for coverage percentages
+precision = 2
+
+# Lines to exclude from coverage
+exclude_lines =
+    # Standard pragma
+    pragma: no cover
+    
+    # Debug code
+    def __repr__
+    def __str__
+    
+    # Defensive programming
+    raise AssertionError
+    raise NotImplementedError
+    
+    # Non-executable code
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    
+    # Abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+    
+    # Protocol methods
+    \.\.\.$
+    
+    # Logging
+    logger\.debug
+    
+    # Pass statements
+    pass
+
+# Skip files that are fully covered
+skip_covered = False
+
+# Show missing line numbers
+show_missing = True
+
+# Sort report by coverage percentage
+sort = Cover
+
+[html]
+# HTML report settings
+directory = htmlcov
+title = Personal Life Tracker Coverage Report
+
+[xml]
+# XML report for CI/CD integration
+output = coverage.xml
+
+[json]
+# JSON report for programmatic access
+output = coverage.json
+pretty_print = True

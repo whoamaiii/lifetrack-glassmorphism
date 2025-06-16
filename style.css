@@ -1,0 +1,238 @@
+/* Global Styles and Background */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Main app container with gradient background */
+.stApp {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+}
+
+/* Hide Streamlit default elements */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+.stDeployButton {display: none;}
+
+/* Main content area */
+.main .block-container {
+    max-width: 500px;
+    padding: 1rem;
+    padding-bottom: 120px; /* More space for bottom nav */
+}
+
+/* Glass panel effect */
+.glass-panel {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+    color: white !important;
+    font-weight: 600 !important;
+}
+
+p, span, div, label {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Custom metric cards */
+.metric-card {
+    text-align: center;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.metric-card h3 {
+    font-size: 1rem !important;
+    margin-bottom: 0.5rem;
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.metric-card h1 {
+    font-size: 2.5rem !important;
+    margin: 0.5rem 0;
+    color: white !important;
+}
+
+.metric-card p {
+    font-size: 0.9rem !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+    margin: 0;
+}
+
+/* Streamlit metrics override */
+[data-testid="metric-container"] {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 15px;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    text-align: center;
+}
+
+[data-testid="stMetricValue"] {
+    color: white !important;
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+}
+
+[data-testid="stMetricLabel"] {
+    color: rgba(255, 255, 255, 0.8) !important;
+    font-size: 0.9rem !important;
+}
+
+[data-testid="stMetricDelta"] {
+    color: #4ade80 !important;
+}
+
+/* Fix bottom navigation positioning */
+/* Target the streamlit-option-menu container directly */
+[data-testid="stHorizontalBlock"]:has(.nav-link) {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.2) !important;
+    padding: 0.5rem !important;
+    z-index: 999 !important;
+    margin: 0 !important;
+}
+
+/* Navigation menu items */
+.nav-link {
+    color: rgba(255, 255, 255, 0.8) !important;
+    transition: all 0.3s ease !important;
+}
+
+.nav-link:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    transform: translateY(-2px);
+}
+
+.nav-link-selected {
+    background: rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Form elements */
+.stTextArea textarea, .stTextInput input {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    border-radius: 10px !important;
+    color: white !important;
+    backdrop-filter: blur(10px);
+    padding: 0.75rem !important;
+}
+
+.stTextArea textarea::placeholder, .stTextInput input::placeholder {
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* All buttons */
+.stButton > button {
+    background: rgba(255, 255, 255, 0.15) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    color: white !important;
+    border-radius: 12px !important;
+    backdrop-filter: blur(10px);
+    font-weight: 600;
+    transition: all 0.3s ease;
+    padding: 0.75rem 1.5rem !important;
+    white-space: pre-line !important; /* Allow line breaks in button text */
+}
+
+.stButton > button:hover {
+    background: rgba(255, 255, 255, 0.25) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* Primary form submit button */
+[data-testid="stFormSubmitButton"] > button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 700 !important;
+    font-size: 1.1rem !important;
+    padding: 1rem 2rem !important;
+}
+
+[data-testid="stFormSubmitButton"] > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+}
+
+/* Success messages */
+[data-testid="stAlert"] {
+    background: rgba(74, 222, 128, 0.2) !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(74, 222, 128, 0.3) !important;
+    border-radius: 10px !important;
+    color: white !important;
+}
+
+/* Info messages */
+[data-testid="stAlert"][data-baseweb="notification"][kind="info"] {
+    background: rgba(59, 130, 246, 0.2) !important;
+    border: 1px solid rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Dividers */
+hr {
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    margin: 1rem 0 !important;
+}
+
+/* Columns spacing */
+[data-testid="column"] {
+    padding: 0 0.5rem;
+}
+
+/* Toggle switches */
+.stCheckbox label, [data-baseweb="checkbox"] {
+    color: white !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+/* Balloons animation container */
+.stApp > div:first-child {
+    position: relative;
+    z-index: 1;
+}
+
+/* Fix navigation overlap with content */
+.main {
+    margin-bottom: 80px;
+} 
