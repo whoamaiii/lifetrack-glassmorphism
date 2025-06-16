@@ -988,4 +988,88 @@ def format_activity_summary(activities: List[Dict]) -> str:
         
         summary_parts.append(f"- {activity_data['activity']}: {formatted_quantity} {unit}".strip())
         
-    return "\\n".join(summary_parts) 
+    return "\\n".join(summary_parts)
+
+
+# --- AI CHAT FUNCTION ---
+
+def get_ai_chat_response(user_message: str, temperature: float = 0.7, max_tokens: int = 150) -> str:
+    """
+    Gets a response from the AI model for a given user message.
+
+    Args:
+        user_message: The message from the user.
+        temperature: Controls randomness in response generation.
+        max_tokens: Maximum number of tokens in the generated response.
+
+    Returns:
+        str: The AI's response message or an error message if the call fails.
+             Error messages will start with "Error:"
+
+    Raises:
+        ValueError: If API key is not set or invalid.
+    """
+    if not validate_api_key():
+        # This will be caught by the caller in streamlit_app.py
+        raise ValueError("API key is not set or invalid. Please configure your API key in Settings.")
+
+    global API_URL, MODEL # Use global API_URL and MODEL
+
+    system_prompt = (
+        "You are a helpful and encouraging personal health coach. "
+        "Provide supportive and informative advice. Keep your responses concise and actionable. "
+        "Focus on topics like fitness, nutrition, mindfulness, sleep, and general well-being. "
+        "If the user asks about topics outside of health and wellness, gently redirect them or state that "
+        "you are focused on health coaching."
+    )
+
+    headers = {
+        "Authorization": f"Bearer {get_api_key()}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens
+    }
+
+    try:
+        response = requests.post(API_URL, headers=headers, data=json.dumps(data), timeout=45) # Increased timeout
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+
+        try:
+            response_data = response.json()
+        except json.JSONDecodeError as json_err:
+            return f"Error: Failed to decode API JSON response. Status: {response.status_code}. Response text: {response.text[:200]}... Error: {json_err}"
+
+        if 'choices' not in response_data or not response_data['choices']:
+            return f"Error: API response missing 'choices'. Response: {str(response_data)[:200]}..."
+
+        message = response_data['choices'][0].get('message')
+        if not message or 'content' not in message:
+            return f"Error: API response missing 'message' or 'content' in choices. Response: {str(response_data)[:200]}..."
+
+        content_str = message['content']
+
+        if not content_str or not content_str.strip():
+            return "Error: AI returned an empty response."
+
+        return content_str.strip()
+
+    except requests.exceptions.HTTPError as http_err:
+        error_message = f"Error: API call failed with HTTPError: {http_err}. "
+        if response is not None:
+            error_message += f"Status Code: {response.status_code}. Response: {response.text[:200]}..."
+        return error_message
+    except requests.exceptions.Timeout:
+        return "Error: The request to the AI timed out. Please try again."
+    except requests.exceptions.RequestException as req_err:
+        return f"Error: API call failed with RequestException: {req_err}"
+    except Exception as e:
+        # General exception for any other errors
+        return f"Error: An unexpected error occurred while contacting the AI: {e}"

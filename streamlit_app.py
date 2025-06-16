@@ -1,8 +1,9 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
-from logic import log_activity, load_data
+from logic import log_activity, load_data, get_ai_chat_response, set_api_key, get_api_key
+import logic # Ensure logic is imported for other functions like get_available_activities etc.
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta # Added timedelta
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
@@ -97,13 +98,19 @@ if selected == "Home":
                 """.format(len(today_df)), unsafe_allow_html=True)
             
             with col2:
+                # Calculate activities for the current week
+                today = datetime.now().date()
+                start_of_week = today - timedelta(days=today.weekday())
+                end_of_week = start_of_week + timedelta(days=6)
+
+                this_week_df = df[(df['timestamp'].dt.date >= start_of_week) & (df['timestamp'].dt.date <= end_of_week)]
                 st.markdown("""
                 <div class="metric-card">
-                    <h3>📈 Total</h3>
+                    <h3>📈 Activities</h3>
                     <h1>{}</h1>
                     <p>This Week</p>
                 </div>
-                """.format(len(df)), unsafe_allow_html=True)
+                """.format(len(this_week_df)), unsafe_allow_html=True)
             
             with col3:
                 st.markdown("""
@@ -180,12 +187,14 @@ if selected == "Home":
 elif selected == "Analysis":
     st.markdown("# 📊 Analytics")
     
+    # Load data
+    df = load_data()
+
     # Stats Overview
     with st.container():
         st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
         st.markdown("## 📈 Your Statistics")
         
-        df = load_data()
         if df is not None and not df.empty:
             col1, col2, col3, col4 = st.columns(4)
             
@@ -194,20 +203,56 @@ elif selected == "Analysis":
             with col2:
                 st.metric("Active Days", df['timestamp'].dt.date.nunique(), "+3")
             with col3:
-                st.metric("Best Streak", "7 days", "🔥")
+                st.metric("Best Streak", "7 days", "🔥") # Placeholder
             with col4:
-                st.metric("Points Earned", "1,250", "+150")
+                st.metric("Points Earned", "1,250", "+150") # Placeholder
         else:
             st.info("No data to analyze yet. Start tracking your activities!")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Charts placeholder
-    with st.container():
-        st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
-        st.markdown("## 📊 Activity Trends")
-        st.markdown("Charts and visualizations coming soon!")
-        st.markdown('</div>', unsafe_allow_html=True)
+    # Charts section
+    if df is not None and not df.empty:
+        # Totals chart
+        with st.container():
+            st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
+            st.markdown("### Total Quantities by Activity")
+            totals_chart_data = logic.create_totals_chart_data(df)
+            if totals_chart_data is not None and not totals_chart_data.empty:
+                st.bar_chart(totals_chart_data)
+            else:
+                st.write("No data for totals chart.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # Timeline chart
+        with st.container():
+            st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
+            st.markdown("### Activity Timeline")
+
+            available_activities = logic.get_available_activities(df)
+            if available_activities:
+                selected_activity = st.selectbox(
+                    "Select an activity:",
+                    options=available_activities,
+                    key="analysis_activity_select"
+                )
+
+                if selected_activity:
+                    timeline_chart_data = logic.create_timeline_chart_data(df, selected_activity)
+                    if timeline_chart_data is not None and not timeline_chart_data.empty:
+                        st.line_chart(timeline_chart_data)
+                    else:
+                        st.write(f"No timeline data for {selected_activity}.")
+            else:
+                st.write("No activities available for timeline chart.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    elif df is None or df.empty: # Keep this condition to ensure the message shows if there's no data at all
+        with st.container():
+            st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
+            st.markdown("## 📊 Activity Trends")
+            st.info("No data to analyze yet. Start tracking your activities to see your trends!")
+            st.markdown('</div>', unsafe_allow_html=True)
 
 elif selected == "Log":
     st.markdown("# ✍️ Quick Log")
@@ -283,41 +328,162 @@ elif selected == "Log":
 
 elif selected == "Chat":
     st.markdown("# 💬 AI Assistant")
-    
+
     with st.container():
         st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
         st.markdown("## 🤖 Your Personal Health Coach")
-        st.markdown("Ask me anything about your health and wellness journey!")
+        # Removed "Ask me anything..." as the chat interface implies this.
+
+        st.markdown("#### Configure AI Response")
         
-        # Chat interface placeholder
-        st.text_input("Type your message...", placeholder="How can I improve my water intake?")
-        st.button("Send →", use_container_width=True)
+        # Sliders for temperature and max_tokens
+        # Initialize with session_state.get to preserve values across reruns
+        # Default to 0.7 for temperature and 250 for max_tokens if not in session_state
+        temperature_slider = st.slider(
+            "Temperature (Creativity)",
+            min_value=0.0,
+            max_value=1.0,
+            value=st.session_state.get('chat_temperature', 0.7),
+            step=0.05,
+            help="Lower values are more deterministic, higher values are more creative."
+        )
+        max_tokens_slider = st.slider(
+            "Max Tokens (Response Length)",
+            min_value=50,
+            max_value=1000,
+            value=st.session_state.get('chat_max_tokens', 250),
+            step=50,
+            help="Maximum number of tokens in the AI's response."
+        )
+
+        # Store current slider values in session state to persist them
+        st.session_state.chat_temperature = temperature_slider
+        st.session_state.chat_max_tokens = max_tokens_slider
+
+        st.markdown("---") # Visual separator
+
+        # Initialize chat history in session state if it doesn't exist
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        # Display prior chat messages
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
+
+        # Chat input
+        if user_input := st.chat_input("How can I help you stay healthy today?", key="chat_input"):
+            # Add user message to chat history
+            st.session_state.messages.append({"role": "user", "content": user_input})
+
+            # Display user message immediately
+            with st.chat_message("user"):
+                st.write(user_input)
+
+            # Get AI response using slider values from session state
+            try:
+                # Show a thinking indicator while waiting for AI
+                with st.spinner("Thinking..."):
+                    ai_response = get_ai_chat_response(
+                        user_input,
+                        temperature=st.session_state.chat_temperature,
+                        max_tokens=st.session_state.chat_max_tokens
+                    )
+
+                if ai_response.startswith("Error:"):
+                    st.error(ai_response)
+                    # Optionally remove the last user message if AI fails, or keep it to show context of error
+                    # For now, let's keep it. If AI fails, we add an error message to the chat.
+                    st.session_state.messages.append({"role": "assistant", "content": ai_response})
+                else:
+                    st.session_state.messages.append({"role": "assistant", "content": ai_response})
+
+                # Rerun to update the chat display with the new AI message (or error)
+                st.rerun()
+
+            except ValueError as ve: # Catch API key validation errors from logic.py
+                st.error(str(ve))
+                # Add error to chat display
+                st.session_state.messages.append({"role": "assistant", "content": str(ve)})
+                st.rerun()
+            except Exception as e: # Catch any other unexpected errors
+                st.error(f"An unexpected error occurred: {e}")
+                st.session_state.messages.append({"role": "assistant", "content": f"An unexpected error occurred: {e}"})
+                st.rerun()
         
         st.markdown('</div>', unsafe_allow_html=True)
 
 elif selected == "Settings":
     st.markdown("# ⚙️ Settings")
     
+    # API Key Management Section
     with st.container():
         st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
-        st.markdown("## 👤 Profile")
-        
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            st.markdown("### 🎯")
-        with col2:
-            st.text_input("Name", value="User", label_visibility="visible")
-            st.text_input("Email", value="user@example.com", label_visibility="visible")
+        st.markdown("## 🔑 API Configuration")
+
+        # Get current API key for status display (do this before input field)
+        current_api_key = get_api_key()
+        if current_api_key:
+            if len(current_api_key) > 4:
+                 st.caption(f"Current status: API Key is set (ending with ...{current_api_key[-4:]})")
+            else:
+                 st.caption("Current status: API Key is set (but too short to mask).")
+        else:
+            st.caption("Current status: API Key not set.")
+
+        # Initialize api_key_input from session_state if it exists, otherwise empty string
+        if 'api_key_input' not in st.session_state:
+            st.session_state.api_key_input = ''
+
+        api_key_value_from_input = st.text_input(
+            "OpenRouter API Key",
+            value=st.session_state.api_key_input,
+            type="password",
+            key="api_key_input_field",  # Use this key to retrieve value
+            help="Enter your OpenRouter API key. This is stored locally in config.json."
+        )
+        # Update session state for the input field immediately if it changes
+        st.session_state.api_key_input = api_key_value_from_input
+
+        if st.button("Save API Key", key="save_api_key_button"):
+            # Use the value from the input field's dedicated session state key
+            api_key_to_save = st.session_state.api_key_input_field
+            if set_api_key(api_key_to_save):
+                st.success("API Key saved successfully!")
+                # Clear the input field in session_state after successful save
+                st.session_state.api_key_input = ''
+                # Rerun to update the status caption and clear the visible input if desired by Streamlit's default behavior
+                st.rerun()
+            else:
+                st.error("Failed to save API Key. Check file permissions for config.json.")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
+    # Notification Settings Section
     with st.container():
         st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
         st.markdown("## 🔔 Notifications")
         
-        st.toggle("Daily Reminders", value=True)
-        st.toggle("Achievement Alerts", value=True)
-        st.toggle("Weekly Summary", value=True)
+        daily_reminders = st.toggle(
+            "Daily Reminders",
+            value=st.session_state.get('settings_daily_reminders', True),
+            key="toggle_daily_reminders"
+        )
+        st.session_state.settings_daily_reminders = daily_reminders
+
+        achievement_alerts = st.toggle(
+            "Achievement Alerts",
+            value=st.session_state.get('settings_achievement_alerts', True),
+            key="toggle_achievement_alerts"
+        )
+        st.session_state.settings_achievement_alerts = achievement_alerts
+
+        weekly_summary = st.toggle(
+            "Weekly Summary",
+            value=st.session_state.get('settings_weekly_summary', True),
+            key="toggle_weekly_summary"
+        )
+        st.session_state.settings_weekly_summary = weekly_summary
         
         st.markdown('</div>', unsafe_allow_html=True)
 
