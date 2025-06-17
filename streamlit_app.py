@@ -5,6 +5,26 @@ import logic # Ensure logic is imported for other functions like get_available_a
 import pandas as pd
 from datetime import datetime, timedelta # Added timedelta
 
+# Helper to log activity and refresh data
+
+def log_and_refresh(activity_desc: str, success_text: str = "✅ Logged!"):
+    """Logs the activity, shows a success notification, then refreshes the app
+    so that components relying on the dataset (e.g. Recent Activities) update
+    immediately.
+    """
+    try:
+        log_activity(activity_desc)
+        # Store flash + celebration flag to display after rerun
+        st.session_state["flash"] = success_text
+        st.session_state["celebrate"] = True
+        # Trigger UI refresh
+        if hasattr(st, "experimental_rerun"):
+            st.experimental_rerun()
+        elif hasattr(st, "rerun"):
+            st.rerun()
+    except Exception as e:
+        st.error(f"Failed to log activity: {e}")
+
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="LifeTrack",
@@ -19,6 +39,14 @@ def load_css(file_name):
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 load_css("style.css")
+
+# --- Flash message handling ---
+if "flash" in st.session_state:
+    st.toast(st.session_state.pop("flash"), icon="🎉")
+
+# Show balloons animation if flagged (set before rerun)
+if st.session_state.pop("celebrate", False):
+    st.balloons()
 
 # --- 3. INJECT CUSTOM HTML FOR BOTTOM NAV ---
 # Since streamlit-option-menu doesn't properly support fixed positioning,
@@ -133,36 +161,24 @@ if selected == "Home":
     with col1:
         with st.container():
             if st.button("💧 Log Water", use_container_width=True, key="home_water"):
-                log_activity("Drank a glass of water")
-                st.success("✅ Water logged!")
-                st.balloons()
+                log_and_refresh("Drank a glass of water")
             
             if st.button("🏃 Add Exercise", use_container_width=True, key="home_exercise"):
-                log_activity("Completed workout session")
-                st.success("✅ Exercise logged!")
-                st.balloons()
+                log_and_refresh("Completed workout session")
             
             if st.button("🍎 Track Meal", use_container_width=True, key="home_meal"):
-                log_activity("Had a healthy meal")
-                st.success("✅ Meal tracked!")
-                st.balloons()
+                log_and_refresh("Had a healthy meal")
     
     with col2:
         with st.container():
             if st.button("😴 Log Sleep", use_container_width=True, key="home_sleep"):
-                log_activity("Got good sleep")
-                st.success("✅ Sleep logged!")
-                st.balloons()
+                log_and_refresh("Got good sleep")
             
             if st.button("🧘 Add Meditation", use_container_width=True, key="home_meditation"):
-                log_activity("Meditated for 10 minutes")
-                st.success("✅ Meditation logged!")
-                st.balloons()
+                log_and_refresh("Meditated for 10 minutes")
             
             if st.button("📚 Track Study", use_container_width=True, key="home_study"):
-                log_activity("Studied for 30 minutes")
-                st.success("✅ Study session logged!")
-                st.balloons()
+                log_and_refresh("Studied for 30 minutes")
 
     # Recent Activities Card
     with st.container():
@@ -281,9 +297,7 @@ elif selected == "Log":
                 st.markdown("**+50** points", unsafe_allow_html=True)
             
             if submitted and user_input:
-                log_activity(user_input)
-                st.success(f"✅ Logged successfully!")
-                st.balloons()
+                log_and_refresh(user_input)
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -295,36 +309,30 @@ elif selected == "Log":
     
     with col1:
         if st.button("💧 Water\n+10 pts", use_container_width=True, key="log_water"):
-            log_activity("Drank a glass of water")
-            st.success("✅ +10 points!")
+            log_and_refresh("Drank a glass of water")
     
     with col2:
         if st.button("🏃 Exercise\n+25 pts", use_container_width=True, key="log_exercise"):
-            log_activity("Completed exercise")
-            st.success("✅ +25 points!")
+            log_and_refresh("Completed exercise")
     
     with col3:
         if st.button("🧘 Meditate\n+15 pts", use_container_width=True, key="log_meditate"):
-            log_activity("Meditated")
-            st.success("✅ +15 points!")
+            log_and_refresh("Meditated")
     
     # Second row
     col1, col2, col3 = st.columns(3)
     
     with col1:
         if st.button("🍎 Healthy Meal\n+20 pts", use_container_width=True, key="log_meal"):
-            log_activity("Ate healthy meal")
-            st.success("✅ +20 points!")
+            log_and_refresh("Ate healthy meal")
     
     with col2:
         if st.button("📚 Study\n+30 pts", use_container_width=True, key="log_study"):
-            log_activity("Study session")
-            st.success("✅ +30 points!")
+            log_and_refresh("Study session")
     
     with col3:
         if st.button("😴 Good Sleep\n+25 pts", use_container_width=True, key="log_sleep"):
-            log_activity("Got good sleep")
-            st.success("✅ +25 points!")
+            log_and_refresh("Got good sleep")
 
 elif selected == "Chat":
     st.markdown("# 💬 AI Assistant")
