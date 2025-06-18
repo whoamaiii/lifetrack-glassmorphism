@@ -168,7 +168,7 @@ config = load_config()
 API_URL = config.get("api_url", "https://openrouter.ai/api/v1/chat/completions")
 MODEL = config.get("model", "google/gemini-flash-1.5")
 CSV_FILENAME = config.get("csv_filename", "livslogg.csv")
-TASKS_CSV_FILENAME = config.get("tasks_csv_filename", "tasks.csv")
+DEFAULT_TASKS_CSV_FILENAME = config.get("tasks_csv_filename", "tasks.csv") # Renamed
 
 # Activity categories
 ACTIVITY_CATEGORIES = ['Water', 'Cannabis', 'Cigarette', 'Alcohol', 'Sex', 'Walk', 'Food']
@@ -1082,60 +1082,74 @@ def get_ai_chat_response(user_message: str, temperature: float = 0.7, max_tokens
 # with the existing activity tracking system. Future enhancement could add
 # timezone support using pytz or zoneinfo.
 
-def add_task(description: str) -> None:
+def add_task(description: str, due_date: Optional[str] = None, priority: Optional[str] = None, filename: str = DEFAULT_TASKS_CSV_FILENAME) -> None:
     """
-    Add a new task to the tasks CSV file.
-    
-    Creates a new task with a unique ID and timestamp, then appends it to the
-    tasks CSV file. The task is created with 'pending' status by default.
-    
+    Add a new task to the specified tasks CSV file.
+
+    Creates a new task with a unique ID, timestamp, and optional due date and priority.
+    Appends the task to the tasks CSV file. The task is created with 'pending' status by default.
+
     Args:
-        description: Text description of the task to add
-        
+        description: Text description of the task to add.
+        due_date: Optional ISO date string (YYYY-MM-DD) for the task's due date.
+        priority: Optional priority string ("low", "medium", "high") for the task.
+
     Returns:
         None
-        
+
     Raises:
-        ValueError: If description is empty or only whitespace
-        IOError: If the task cannot be saved to the CSV file due to I/O errors
-        
+        ValueError: If description is empty, due_date is invalid, or priority is invalid.
+        IOError: If the task cannot be saved to the CSV file due to I/O errors.
+
     Example:
-        >>> add_task("Buy groceries")
+        >>> add_task("Buy groceries", due_date="2024-12-31", priority="high")
         >>> add_task("Finish report")
     """
     # Validate input
     if not description or not description.strip():
         raise ValueError("Task description cannot be empty")
-    
+
+    if due_date:
+        try:
+            datetime.strptime(due_date, '%Y-%m-%d')
+        except ValueError:
+            raise ValueError("Invalid due_date format. Please use YYYY-MM-DD.")
+
+    valid_priorities = ["low", "medium", "high"]
+    if priority and priority not in valid_priorities:
+        raise ValueError(f"Invalid priority. Must be one of {valid_priorities}.")
+
     # Generate unique task ID
     task_id = str(uuid.uuid4())
-    
-    # Get current timestamp (timezone-aware would be better, but keeping consistent with existing code)
-    created_at = datetime.now().isoformat()
-    
+
+    # Get current timestamp
+    created_at = datetime.now().isoformat() # Stored as ISO datetime string
+
     # Set initial status
     status = 'pending'
-    
-    # Create task data with explicit column order
+
+    # Create task data
     new_task_data = {
         'task_id': task_id,
-        'description': description.strip(),  # Remove leading/trailing whitespace
+        'description': description.strip(),
         'status': status,
-        'created_at': created_at
+        'created_at': created_at,
+        'due_date': due_date if due_date else '', # Store as string or empty
+        'priority': priority if priority else ''  # Store as string or empty
     }
-    
-    # Convert to DataFrame with explicit column order
-    columns = ['task_id', 'description', 'status', 'created_at']
+
+    # Define full column list for CSV
+    columns = ['task_id', 'description', 'status', 'created_at', 'due_date', 'priority']
     new_task_df = pd.DataFrame([new_task_data], columns=columns)
-    
+
     try:
         # Use a more atomic approach for header checking
-        file_exists = os.path.exists(TASKS_CSV_FILENAME)
+        file_exists = os.path.exists(filename)
         
         if file_exists:
             # File exists, check if it's empty
             try:
-                existing_df = pd.read_csv(TASKS_CSV_FILENAME, nrows=0)
+                existing_df = pd.read_csv(filename, nrows=0)
                 needs_header = False
             except (pd.errors.EmptyDataError, pd.errors.ParserError):
                 # File is empty or corrupted
@@ -1146,261 +1160,369 @@ def add_task(description: str) -> None:
         
         # Append to CSV file with explicit column order
         new_task_df.to_csv(
-            TASKS_CSV_FILENAME, 
-            mode='a', 
-            header=needs_header, 
+            filename,
+            mode='a',
+            header=needs_header,
             index=False,
             columns=columns  # Ensure consistent column order
         )
-        
+
     except PermissionError as e:
-        raise IOError(f"Permission denied: Cannot write to {TASKS_CSV_FILENAME}") from e
+        raise IOError(f"Permission denied: Cannot write to {filename}") from e
     except IOError as e:
         raise IOError(f"Failed to save task to CSV: {e}") from e
     except Exception as e:
         raise IOError(f"Unexpected error saving task: {e}") from e
 
 
-def load_tasks(status_filter: Optional[str] = None) -> pd.DataFrame:
+def load_tasks(status_filter: Optional[str] = None, filename: str = DEFAULT_TASKS_CSV_FILENAME) -> pd.DataFrame:
     """
     Load tasks from the CSV file, optionally filtering by status.
-    
-    Reads tasks from the tasks CSV file, parses timestamps, and returns
-    a DataFrame sorted by creation date (newest first).
-    
+
+    Reads tasks from the tasks CSV file, handles new optional 'due_date' and 'priority'
+    columns, parses timestamps, and returns a DataFrame sorted by creation date (newest first).
+
     Args:
         status_filter: Optional status to filter by ('pending', 'completed', etc.)
-                      If None, returns all tasks
-        
+                      If None, returns all tasks.
+
     Returns:
         pd.DataFrame: DataFrame containing tasks with columns:
-                     - task_id: Unique task identifier
-                     - description: Task description text
-                     - status: Current task status
-                     - created_at: Creation timestamp (datetime object)
-                     Returns empty DataFrame with correct columns if file doesn't exist
-        
+                     - task_id (str): Unique task identifier.
+                     - description (str): Task description text.
+                     - status (str): Current task status.
+                     - created_at (datetime.datetime): Creation timestamp.
+                     - due_date (datetime.date, optional): Due date of the task, NaT if not set or invalid.
+                     - priority (str, optional): Priority of the task, None if not set.
+                     Returns empty DataFrame with correct columns if file doesn't exist or is invalid.
+
     Example:
-        >>> # Get all tasks
         >>> all_tasks = load_tasks()
-        
-        >>> # Get only pending tasks
         >>> pending_tasks = load_tasks(status_filter='pending')
-        
-        >>> # Get completed tasks
-        >>> completed_tasks = load_tasks(status_filter='completed')
     """
-    # Define expected columns
-    task_columns = ['task_id', 'description', 'status', 'created_at']
-    
+    # Define expected columns, including new optional ones
+    task_columns = ['task_id', 'description', 'status', 'created_at', 'due_date', 'priority']
+
     # Validate status_filter if provided
     valid_statuses = ['pending', 'completed', 'in_progress', 'cancelled']
     if status_filter is not None and status_filter not in valid_statuses:
         # Log warning but don't fail - just return empty results
         print(f"Warning: Invalid status filter '{status_filter}'. Valid options: {valid_statuses}")
         return pd.DataFrame(columns=task_columns)
-    
-    # Check if file exists
-    if not os.path.exists(TASKS_CSV_FILENAME):
+
+    if not os.path.exists(filename):
         return pd.DataFrame(columns=task_columns)
-    
+
     try:
-        # Read CSV file
-        df = pd.read_csv(TASKS_CSV_FILENAME)
-        
-        # Return empty DataFrame with columns if file is empty
+        df = pd.read_csv(filename)
+
         if df.empty:
             return pd.DataFrame(columns=task_columns)
-        
-        # Ensure all expected columns exist
-        missing_columns = set(task_columns) - set(df.columns)
-        if missing_columns:
-            # File has wrong structure, return empty DataFrame
-            print(f"Warning: Tasks CSV missing columns: {missing_columns}")
-            return pd.DataFrame(columns=task_columns)
-        
-        # Parse created_at to datetime - handle both ISO format and pandas default format
+
+        # Handle potentially missing due_date and priority columns for backward compatibility
+        if 'due_date' not in df.columns:
+            df['due_date'] = pd.NA
+        else:
+            # Convert empty strings in due_date to NA before parsing
+            df['due_date'] = df['due_date'].replace('', pd.NA)
+            # Parse due_date to date objects, coerce errors to NaT
+            df['due_date'] = pd.to_datetime(df['due_date'], errors='coerce').dt.date
+
+        if 'priority' not in df.columns:
+            df['priority'] = pd.NA # Use pd.NA for missing string data
+        else:
+            # Replace empty strings in priority with pd.NA
+             df['priority'] = df['priority'].replace('', pd.NA)
+
+
+        # Ensure all essential columns exist, even if some were initially missing
+        # For columns other than due_date and priority, if they are missing it's a bigger issue.
+        core_cols = ['task_id', 'description', 'status', 'created_at']
+        for col in core_cols:
+            if col not in df.columns:
+                print(f"Warning: Core column '{col}' missing from Tasks CSV. Returning empty DataFrame.")
+                return pd.DataFrame(columns=task_columns)
+
+        # Parse created_at to datetime
         df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce', format='mixed')
         
-        # Drop rows where created_at couldn't be parsed
-        invalid_dates = df['created_at'].isna().sum()
-        if invalid_dates > 0:
-            print(f"Warning: Dropped {invalid_dates} tasks with invalid timestamps")
-        df = df.dropna(subset=['created_at'])
-        
-        # Validate task_id and description are not empty
-        df = df[df['task_id'].notna() & (df['task_id'] != '')]
-        df = df[df['description'].notna() & (df['description'].str.strip() != '')]
-        
+        # Drop rows where created_at or task_id couldn't be parsed or are empty
+        df = df.dropna(subset=['created_at', 'task_id'])
+        df = df[df['task_id'].astype(str).str.strip() != '']
+        df = df[df['description'].astype(str).str.strip() != '']
+
+
         # Apply status filter if provided
         if status_filter is not None:
             df = df[df['status'] == status_filter]
-        
+
         # Sort by created_at descending (newest first)
         df = df.sort_values(by='created_at', ascending=False)
-        
-        # Ensure only expected columns are returned in the correct order
+
+        # Ensure all columns from task_columns are present in the final DataFrame
+        # This is important if the CSV was missing optional columns
+        for col in task_columns:
+            if col not in df.columns:
+                df[col] = pd.NA # Or appropriate default like pd.NaT for dates
+
         return df[task_columns]
-        
+
     except pd.errors.EmptyDataError:
-        # File exists but is empty
         return pd.DataFrame(columns=task_columns)
     except pd.errors.ParserError as e:
-        # CSV file is corrupted
         print(f"Error: Tasks CSV file is corrupted: {e}")
         return pd.DataFrame(columns=task_columns)
     except PermissionError:
-        # No read permission
-        print(f"Error: Permission denied reading {TASKS_CSV_FILENAME}")
+        print(f"Error: Permission denied reading {filename}")
         return pd.DataFrame(columns=task_columns)
     except Exception as e:
-        # Other unexpected errors
         print(f"Error loading tasks: {e}")
         return pd.DataFrame(columns=task_columns)
 
 
-def update_task_status(task_id: str, new_status: str) -> None:
+def edit_task(task_id: str, description: Optional[str] = None, status: Optional[str] = None, due_date: Optional[str] = None, priority: Optional[str] = None, filename: str = DEFAULT_TASKS_CSV_FILENAME) -> None:
+    """
+    Edit details of an existing task in the specified CSV file.
+
+    Allows updating the description, status, due_date, and priority of a task
+    identified by its task_id. Only provided fields are updated.
+
+    Args:
+        task_id: The unique identifier of the task to edit.
+        description: Optional new description for the task. If empty, not updated.
+        status: Optional new status (e.g., 'pending', 'completed'). Validated.
+        due_date: Optional new due date (YYYY-MM-DD).
+                  An empty string "" will clear the due date.
+                  Invalid format raises ValueError.
+        priority: Optional new priority ('low', 'medium', 'high').
+                  An empty string "" will clear the priority.
+                  Invalid value raises ValueError.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If task_id is not found, or if status, due_date (non-empty),
+                    or priority (non-empty) are invalid.
+        IOError: If tasks cannot be saved back to the CSV file.
+    """
+    if not task_id or not isinstance(task_id, str):
+        raise ValueError("Task ID must be a non-empty string.")
+
+    df = load_tasks(status_filter=None, filename=filename) # Load all tasks from the specified file
+
+    if df.empty:
+        raise ValueError("No tasks found in the system.")
+
+    df['task_id'] = df['task_id'].astype(str)
+    task_index = df[df['task_id'] == task_id].index
+
+    if task_index.empty:
+        raise ValueError(f"Task with ID '{task_id}' not found.")
+
+    idx = task_index[0] # Get the actual index label
+
+    # Update description
+    if description is not None and description.strip():
+        df.loc[idx, 'description'] = description.strip()
+
+    # Update status
+    valid_statuses = ['pending', 'completed', 'in_progress', 'cancelled']
+    if status is not None:
+        if status not in valid_statuses:
+            raise ValueError(f"Invalid status '{status}'. Valid options: {valid_statuses}.")
+        df.loc[idx, 'status'] = status
+
+    # Update due_date
+    if due_date is not None:
+        if due_date == "": # Clear due date
+            df.loc[idx, 'due_date'] = pd.NaT # Store as NaT in DataFrame
+        else:
+            try:
+                # Validate and convert to datetime.date object for DataFrame
+                parsed_due_date = datetime.strptime(due_date, '%Y-%m-%d').date()
+                df.loc[idx, 'due_date'] = parsed_due_date
+            except ValueError:
+                raise ValueError("Invalid due_date format. Please use YYYY-MM-DD or an empty string to clear.")
+
+    # Update priority
+    valid_priorities = ["low", "medium", "high"]
+    if priority is not None:
+        if priority == "": # Clear priority
+            df.loc[idx, 'priority'] = None # Store as None or pd.NA in DataFrame
+        elif priority not in valid_priorities:
+            raise ValueError(f"Invalid priority '{priority}'. Must be one of {valid_priorities} or an empty string to clear.")
+        else:
+            df.loc[idx, 'priority'] = priority
+
+    # Save the entire DataFrame back to CSV
+    try:
+        # Sort by original created_at to maintain some order
+        df = df.sort_values(by='created_at', ascending=True)
+
+        df_to_save = df.copy()
+        # Convert created_at to ISO datetime string
+        df_to_save['created_at'] = df_to_save['created_at'].dt.strftime('%Y-%m-%dT%H:%M:%S.%f')
+        # Convert due_date to ISO date string or empty string if NaT/None
+        # Ensure that we are calling strftime on a date object
+        df_to_save['due_date'] = df_to_save['due_date'].apply(
+            lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) and hasattr(x, 'strftime') else ''
+        )
+        # Ensure priority is string or empty string
+        df_to_save['priority'] = df_to_save['priority'].fillna('').astype(str)
+
+        columns_to_save = ['task_id', 'description', 'status', 'created_at', 'due_date', 'priority']
+        df_to_save.to_csv(
+            filename,
+            index=False,
+            header=True,
+            columns=columns_to_save
+        )
+    except PermissionError as e:
+        raise IOError(f"Permission denied: Cannot write to {filename}") from e
+    except IOError as e:
+        raise IOError(f"Failed to save updated tasks to CSV: {e}") from e
+    except Exception as e:
+        raise IOError(f"Unexpected error saving edited task: {e}") from e
+
+
+def update_task_status(task_id: str, new_status: str, filename: str = DEFAULT_TASKS_CSV_FILENAME) -> None:
     """
     Update the status of a specific task.
     
     Loads all tasks, updates the status of the specified task, and saves
-    the entire task list back to the CSV file.
-    
+    the entire task list back to the CSV file, preserving new fields.
+
     Args:
-        task_id: Unique identifier of the task to update
-        new_status: New status to set (e.g., 'completed', 'pending')
-        
+        task_id: Unique identifier of the task to update.
+        new_status: New status to set (e.g., 'completed', 'pending').
+
     Returns:
         None
-        
+
     Raises:
-        ValueError: If the task_id is not found or new_status is invalid
-        IOError: If the updated tasks cannot be saved to the CSV file
-        
+        ValueError: If the task_id is not found or new_status is invalid.
+        IOError: If the updated tasks cannot be saved to the CSV file.
+
     Example:
-        >>> # Mark a task as completed
         >>> update_task_status("abc123-def456", "completed")
-        
-        >>> # Reopen a completed task
-        >>> update_task_status("abc123-def456", "pending")
     """
     # Validate inputs
     if not task_id or not isinstance(task_id, str):
         raise ValueError("Task ID must be a non-empty string")
-    
+
     valid_statuses = ['pending', 'completed', 'in_progress', 'cancelled']
     if new_status not in valid_statuses:
         raise ValueError(f"Invalid status '{new_status}'. Valid options: {valid_statuses}")
-    
-    # Load all tasks (without filter to ensure we get all tasks)
-    df = load_tasks(status_filter=None)
-    
-    # Check if task exists
+
+    # Load all tasks using the updated load_tasks function from the specified file
+    df = load_tasks(status_filter=None, filename=filename)
+
     if df.empty:
         raise ValueError("No tasks found in the system")
-    
-    # Ensure task_id is string type in the DataFrame for comparison
+
     df['task_id'] = df['task_id'].astype(str)
-    
     if task_id not in df['task_id'].values:
         raise ValueError(f"Task with ID '{task_id}' not found")
-    
+
     # Update the status
     df.loc[df['task_id'] == task_id, 'status'] = new_status
-    
-    # Also update a 'updated_at' timestamp if we want to track modifications
-    # (not adding this to keep backward compatibility, but could be useful)
-    
+
     try:
-        # Sort by created_at to maintain consistent order in the file
+        # Sort by original created_at to maintain some order, though pandas might not preserve it perfectly on save
         df = df.sort_values(by='created_at', ascending=True)
-        
-        # Convert created_at back to ISO format string for consistency
+
+        # Prepare DataFrame for saving
         df_to_save = df.copy()
+        # Convert created_at to ISO datetime string
         df_to_save['created_at'] = df_to_save['created_at'].dt.strftime('%Y-%m-%dT%H:%M:%S.%f')
-        
-        # Save the entire DataFrame back to CSV with explicit column order
-        columns = ['task_id', 'description', 'status', 'created_at']
+        # Convert due_date to ISO date string or empty string if NaT/None
+        df_to_save['due_date'] = df_to_save['due_date'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) and hasattr(x, 'strftime') else '')
+        # Ensure priority is string or empty string
+        df_to_save['priority'] = df_to_save['priority'].fillna('').astype(str)
+
+
+        # Full list of columns for writing to CSV
+        columns_to_save = ['task_id', 'description', 'status', 'created_at', 'due_date', 'priority']
         df_to_save.to_csv(
-            TASKS_CSV_FILENAME, 
-            index=False, 
+            filename,
+            index=False,
             header=True,
-            columns=columns  # Ensure consistent column order
+            columns=columns_to_save
         )
-        
+
     except PermissionError as e:
-        raise IOError(f"Permission denied: Cannot write to {TASKS_CSV_FILENAME}") from e
+        raise IOError(f"Permission denied: Cannot write to {filename}") from e
     except IOError as e:
         raise IOError(f"Failed to save updated tasks to CSV: {e}") from e
     except Exception as e:
         raise IOError(f"Unexpected error updating task status: {e}") from e
 
 
-def delete_task(task_id: str) -> None:
+def delete_task(task_id: str, filename: str = DEFAULT_TASKS_CSV_FILENAME) -> None:
     """
     Delete a specific task from the tasks CSV file.
-    
+
     Loads all tasks, removes the specified task, and saves the remaining
-    tasks back to the CSV file.
-    
+    tasks back to the CSV file, preserving all columns.
+
     Args:
-        task_id: Unique identifier of the task to delete
-        
+        task_id: Unique identifier of the task to delete.
+
     Returns:
         None
-        
+
     Raises:
-        ValueError: If the task_id is not found
-        IOError: If the updated tasks cannot be saved to the CSV file
-        
+        ValueError: If the task_id is not found.
+        IOError: If the updated tasks cannot be saved to the CSV file.
+
     Example:
-        >>> # Delete a task
         >>> delete_task("abc123-def456")
     """
     # Validate input
     if not task_id or not isinstance(task_id, str):
         raise ValueError("Task ID must be a non-empty string")
-    
-    # Load all tasks
-    df = load_tasks(status_filter=None)
-    
-    # Check if task exists
+
+    # Load all tasks using the updated load_tasks function from the specified file
+    df = load_tasks(status_filter=None, filename=filename)
+
     if df.empty:
         raise ValueError("No tasks found in the system")
-    
-    # Ensure task_id is string type in the DataFrame for comparison
+
     df['task_id'] = df['task_id'].astype(str)
-    
     if task_id not in df['task_id'].values:
         raise ValueError(f"Task with ID '{task_id}' not found")
-    
+
     # Remove the task
     df = df[df['task_id'] != task_id]
-    
+
+    # Full list of columns for writing to CSV
+    columns_to_save = ['task_id', 'description', 'status', 'created_at', 'due_date', 'priority']
+
     try:
         if df.empty:
-            # If no tasks remain, create an empty file with headers
-            empty_df = pd.DataFrame(columns=['task_id', 'description', 'status', 'created_at'])
-            empty_df.to_csv(TASKS_CSV_FILENAME, index=False, header=True)
+            # If no tasks remain, create an empty file with headers for all columns
+            empty_df = pd.DataFrame(columns=columns_to_save)
+            empty_df.to_csv(filename, index=False, header=True)
         else:
-            # Sort by created_at to maintain consistent order in the file
+            # Sort by original created_at
             df = df.sort_values(by='created_at', ascending=True)
-            
-            # Convert created_at back to ISO format string for consistency
+
+            # Prepare DataFrame for saving
             df_to_save = df.copy()
             df_to_save['created_at'] = df_to_save['created_at'].dt.strftime('%Y-%m-%dT%H:%M:%S.%f')
+            df_to_save['due_date'] = df_to_save['due_date'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) and hasattr(x, 'strftime') else '')
+            df_to_save['priority'] = df_to_save['priority'].fillna('').astype(str)
             
-            # Save the remaining tasks back to CSV with explicit column order
-            columns = ['task_id', 'description', 'status', 'created_at']
             df_to_save.to_csv(
-                TASKS_CSV_FILENAME, 
-                index=False, 
+                filename,
+                index=False,
                 header=True,
-                columns=columns
+                columns=columns_to_save
             )
-        
+
     except PermissionError as e:
-        raise IOError(f"Permission denied: Cannot write to {TASKS_CSV_FILENAME}") from e
+        raise IOError(f"Permission denied: Cannot write to {filename}") from e
     except IOError as e:
         raise IOError(f"Failed to save tasks after deletion: {e}") from e
     except Exception as e:

@@ -457,55 +457,363 @@ elif selected == "Chat":
         
         st.markdown('</div>', unsafe_allow_html=True)
 
+elif selected == "Log":
+    st.markdown("# ✍️ Quick Log")
+
+    # Main logging form
+    with st.container():
+        st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
+        st.markdown("### 💭 What did you do?")
+
+        with st.form(key="log_form", clear_on_submit=True):
+            user_input = st.text_area(
+                "Describe your activity",
+                placeholder="e.g., Drank 2 glasses of water, walked for 30 minutes...",
+                height=100,
+                label_visibility="collapsed"
+            )
+
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                submitted = st.form_submit_button(
+                    "✨ Analyze & Save",
+                    use_container_width=True,
+                    type="primary"
+                )
+            with col2:
+                st.markdown("**+50** points", unsafe_allow_html=True)
+
+            if submitted and user_input:
+                log_and_refresh(user_input)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Quick action grid
+    st.markdown("### ⚡ Quick Actions")
+
+    # First row
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("💧 Water\n+10 pts", use_container_width=True, key="log_water"):
+            log_and_refresh("Drank a glass of water")
+
+    with col2:
+        if st.button("🏃 Exercise\n+25 pts", use_container_width=True, key="log_exercise"):
+            log_and_refresh("Completed exercise")
+
+    with col3:
+        if st.button("🧘 Meditate\n+15 pts", use_container_width=True, key="log_meditate"):
+            log_and_refresh("Meditated")
+
+    # Second row
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("🍎 Healthy Meal\n+20 pts", use_container_width=True, key="log_meal"):
+            log_and_refresh("Ate healthy meal")
+
+    with col2:
+        if st.button("📚 Study\n+30 pts", use_container_width=True, key="log_study"):
+            log_and_refresh("Study session")
+
+    with col3:
+        if st.button("😴 Good Sleep\n+25 pts", use_container_width=True, key="log_sleep"):
+            log_and_refresh("Got good sleep")
+    
+    # Quick Add Task section
+    st.markdown("---")  # Separator
+    st.markdown('<div class="glass-panel" style="margin-top: 20px;">', unsafe_allow_html=True)
+    st.markdown("### ➕ Quick Add Task")
+
+    with st.form(key="quick_add_task_form", clear_on_submit=True):
+        new_task_description = st.text_input(
+            "Enter new task description:",
+            key="new_task_input_field_log_page", # Ensure unique key
+            placeholder="e.g., Buy groceries, Finish report",
+            label_visibility="collapsed"
+        )
+
+        add_task_button = st.form_submit_button("✨ Add Task to List", type="primary", use_container_width=True)
+
+        if add_task_button:
+            if new_task_description.strip():  # Check if not just whitespace
+                try:
+                    # Updated to pass None for due_date and priority
+                    logic.add_task(description=new_task_description.strip(), due_date=None, priority=None)
+                    st.session_state["flash"] = "✅ Task added successfully!"
+                    if hasattr(st, "rerun"): st.rerun()
+                    else: st.experimental_rerun()
+                except ValueError as e:
+                    st.error(f"❌ Invalid input: {e}")
+                except IOError as e:
+                    st.error(f"❌ Could not save task: {e}")
+                except Exception as e:
+                    st.error(f"❌ Unexpected error: {e}")
+            else:
+                st.warning("⚠️ Please enter a task description.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+elif selected == "Chat":
+    st.markdown("# 💬 AI Assistant")
+
+    with st.container():
+        st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
+        st.markdown("## 🤖 Your Personal Health Coach")
+        # Removed "Ask me anything..." as the chat interface implies this.
+
+        st.markdown("#### Configure AI Response")
+
+        # Sliders for temperature and max_tokens
+        # Initialize with session_state.get to preserve values across reruns
+        # Default to 0.7 for temperature and 250 for max_tokens if not in session_state
+        temperature_slider = st.slider(
+            "Temperature (Creativity)",
+            min_value=0.0,
+            max_value=1.0,
+            value=st.session_state.get('chat_temperature', 0.7),
+            step=0.05,
+            help="Lower values are more deterministic, higher values are more creative."
+        )
+        max_tokens_slider = st.slider(
+            "Max Tokens (Response Length)",
+            min_value=50,
+            max_value=1000,
+            value=st.session_state.get('chat_max_tokens', 250),
+            step=50,
+            help="Maximum number of tokens in the AI's response."
+        )
+
+        # Store current slider values in session state to persist them
+        st.session_state.chat_temperature = temperature_slider
+        st.session_state.chat_max_tokens = max_tokens_slider
+
+        st.markdown("---") # Visual separator
+
+        # Initialize chat history in session state if it doesn't exist
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        # Display prior chat messages
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
+
+        # Chat input
+        if user_input := st.chat_input("How can I help you stay healthy today?", key="chat_input"):
+            # Add user message to chat history
+            st.session_state.messages.append({"role": "user", "content": user_input})
+
+            # Display user message immediately
+            with st.chat_message("user"):
+                st.write(user_input)
+
+            # Get AI response using slider values from session state
+            try:
+                # Show a thinking indicator while waiting for AI
+                with st.spinner("Thinking..."):
+                    ai_response = get_ai_chat_response(
+                        user_input,
+                        temperature=st.session_state.chat_temperature,
+                        max_tokens=st.session_state.chat_max_tokens
+                    )
+
+                if ai_response.startswith("Error:"):
+                    st.error(ai_response)
+                    # Optionally remove the last user message if AI fails, or keep it to show context of error
+                    # For now, let's keep it. If AI fails, we add an error message to the chat.
+                    st.session_state.messages.append({"role": "assistant", "content": ai_response})
+                else:
+                    st.session_state.messages.append({"role": "assistant", "content": ai_response})
+
+                # Rerun to update the chat display with the new AI message (or error)
+                st.rerun()
+
+            except ValueError as ve: # Catch API key validation errors from logic.py
+                st.error(str(ve))
+                # Add error to chat display
+                st.session_state.messages.append({"role": "assistant", "content": str(ve)})
+                st.rerun()
+            except Exception as e: # Catch any other unexpected errors
+                st.error(f"An unexpected error occurred: {e}")
+                st.session_state.messages.append({"role": "assistant", "content": f"An unexpected error occurred: {e}"})
+                st.rerun()
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# This is the first "Chat" block. The duplicated "Log" and "Chat" blocks that follow it will be removed.
 elif selected == "Tasks":
     st.markdown("# ✅ Your Tasks")
+
+    # Initialize session state for modal
+    if 'show_task_modal' not in st.session_state:
+        st.session_state.show_task_modal = False
+    if 'editing_task_id' not in st.session_state:
+        st.session_state.editing_task_id = None
+
+    # "Add New Task" button
+    if st.button("➕ Add New Task", use_container_width=True, type="primary"):
+        st.session_state.editing_task_id = None
+        st.session_state.show_task_modal = True
+        st.rerun()
+
+    # Load tasks (pending by default, but load_tasks itself handles the filter)
+    # We need all tasks if we are to find one by ID for editing,
+    # but display will filter to pending.
+    all_tasks_df = logic.load_tasks(status_filter=None) # Load all for editing purposes
+    display_tasks_df = all_tasks_df[all_tasks_df['status'] == 'pending'].copy()
+
+
+    # Sorting options for display_tasks_df
+    sort_option = st.selectbox(
+        "Sort tasks by:",
+        ["Creation Date (Newest First)", "Due Date (Earliest First)", "Priority (High to Low)"],
+        key="task_sort_option"
+    )
+
+    if display_tasks_df is not None and not display_tasks_df.empty:
+        if sort_option == "Due Date (Earliest First)":
+            display_tasks_df = display_tasks_df.sort_values(by='due_date', ascending=True, na_position='last')
+        elif sort_option == "Priority (High to Low)":
+            priority_order = ["high", "medium", "low"]
+            display_tasks_df['priority_sort'] = pd.Categorical(
+                display_tasks_df['priority'].fillna('z_other'),
+                categories=priority_order + ['z_other'],
+                ordered=True
+            )
+            display_tasks_df = display_tasks_df.sort_values(by='priority_sort', ascending=True)
+            display_tasks_df = display_tasks_df.drop(columns=['priority_sort'])
+        else: # Default: Creation Date (Newest First)
+            display_tasks_df = display_tasks_df.sort_values(by='created_at', ascending=False)
     
-    # Load pending tasks
-    pending_tasks_df = logic.load_tasks(status_filter='pending')
-    
-    # Display tasks
-    st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
-    
-    if pending_tasks_df.empty:
-        st.info("No pending tasks! Add some from the Log page or enjoy your clear list! 👍")
+    # Task display section
+    st.markdown('<div class="glass-panel" style="margin-top: 20px;">', unsafe_allow_html=True)
+    if display_tasks_df.empty:
+        st.info("No pending tasks! Add one above or enjoy your clear list! 👍")
     else:
         st.markdown("### 📋 Pending Tasks")
-        
-        # Display each task
-        for idx, task_row in pending_tasks_df.iterrows():
-            col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+        for idx, task_row in display_tasks_df.iterrows():
+            task_display_parts = []
+            if pd.notna(task_row['priority']) and task_row['priority']:
+                task_display_parts.append(f"[{task_row['priority'].capitalize()}]")
+            task_display_parts.append(task_row['description'])
+            if pd.notna(task_row['due_date']) and hasattr(task_row['due_date'], 'strftime'):
+                task_display_parts.append(f"- Due: {task_row['due_date'].strftime('%Y-%m-%d')}")
+            task_text = " ".join(task_display_parts)
+
+            # Adjusted columns for Delete button: Description | Done | Edit | Delete
+            col1, col_done, col_edit, col_delete = st.columns([0.55, 0.15, 0.15, 0.15])
             
             with col1:
-                st.markdown(f"**{task_row['description']}**")
+                st.markdown(f"**{task_text}**")
+                st.caption(f"Added: {task_row['created_at'].strftime('%Y-%m-%d %H:%M') if hasattr(task_row['created_at'], 'strftime') else task_row['created_at']}")
             
-            with col2:
-                try:
-                    st.caption(f"Added: {task_row['created_at'].strftime('%Y-%m-%d %H:%M')}")
-                except AttributeError:
-                    # Fallback if created_at is not a datetime object
-                    st.caption(f"Added: {task_row['created_at']}")
-            
-            with col3:
-                if st.button("Mark as Done ✅", key=f"done_button_{task_row['task_id']}", use_container_width=True):
+            with col_done:
+                if st.button("Done", key=f"done_button_{task_row['task_id']}", use_container_width=True):
                     try:
                         logic.update_task_status(task_row['task_id'], 'completed')
                         st.session_state["flash"] = "🎉 Task marked as complete!"
                         st.session_state["celebrate"] = True
-                        # Rerun for compatibility
-                        if hasattr(st, "rerun"):
-                            st.rerun()
-                        else:
-                            st.experimental_rerun()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error updating task: {e}")
+
+            with col_edit:
+                if st.button("Edit", key=f"edit_button_{task_row['task_id']}", use_container_width=True):
+                    st.session_state.editing_task_id = task_row['task_id']
+                    st.session_state.show_task_modal = True
+                    st.rerun()
+
+            with col_delete:
+                if st.button("Delete", key=f"delete_button_{task_row['task_id']}", use_container_width=True):
+                    try:
+                        logic.delete_task(task_id=task_row['task_id'])
+                        st.toast("🗑️ Task deleted successfully!")
+                        st.rerun()
                     except ValueError as e:
-                        st.error(f"❌ Invalid task operation: {e}")
+                        st.error(f"❌ Error deleting task: {e}")
                     except IOError as e:
-                        st.error(f"❌ Could not update task: {e}")
+                        st.error(f"❌ Error deleting task (IO): {e}")
+                    except Exception as e:
+                        st.error(f"❌ Unexpected error deleting task: {e}")
+            st.markdown("---")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Task Add/Edit Modal
+    if st.session_state.show_task_modal:
+        modal_title = "Add New Task"
+        task_to_edit = None
+        default_desc, default_due_date, default_priority_idx = "", None, 0 # Default for new task
+
+        priority_options = ["None", "low", "medium", "high"]
+
+        if st.session_state.editing_task_id:
+            modal_title = "Edit Task"
+            # Find the task in the full DataFrame
+            task_to_edit_series = all_tasks_df[all_tasks_df['task_id'] == st.session_state.editing_task_id].iloc[0]
+            if not task_to_edit_series.empty:
+                default_desc = task_to_edit_series['description']
+                # st.date_input handles None or datetime.date object
+                default_due_date = task_to_edit_series['due_date'] if pd.notna(task_to_edit_series['due_date']) else None
+
+                current_priority = task_to_edit_series['priority']
+                if pd.notna(current_priority) and current_priority in priority_options:
+                    default_priority_idx = priority_options.index(current_priority)
+                else: # Handles None, pd.NA or empty string for priority
+                    default_priority_idx = 0 # "None"
+
+        # Using st.dialog for the modal
+        with st.dialog(title=modal_title, dismissed=(not st.session_state.show_task_modal)):
+            st.markdown('<div class="glass-panel">', unsafe_allow_html=True) # Apply glass panel style to modal content
+            with st.form("task_form"):
+                description = st.text_area("Description", value=default_desc)
+                due_date_val = st.date_input("Due Date (Optional)", value=default_due_date)
+                priority_val_str = st.selectbox("Priority", options=priority_options, index=default_priority_idx)
+
+                submitted = st.form_submit_button("💾 Save Task")
+                if submitted:
+                    final_due_date_str = due_date_val.isoformat() if due_date_val else None
+                    final_priority_str = priority_val_str if priority_val_str != "None" else None
+
+                    try:
+                        if st.session_state.editing_task_id:
+                            # Editing existing task
+                            # Ensure status is preserved if not changed by this form (it isn't)
+                            current_status = task_to_edit_series['status'] if task_to_edit_series is not None else 'pending'
+                            logic.edit_task(
+                                task_id=st.session_state.editing_task_id,
+                                description=description,
+                                status=current_status, # Pass existing status
+                                due_date=final_due_date_str,
+                                priority=final_priority_str
+                            )
+                            st.toast("✅ Task updated successfully!", icon="🎉")
+                        else:
+                            # Adding new task
+                            logic.add_task(
+                                description=description,
+                                due_date=final_due_date_str,
+                                priority=final_priority_str
+                            )
+                            st.toast("✅ Task added successfully!", icon="🎉")
+
+                        st.session_state.show_task_modal = False
+                        st.session_state.editing_task_id = None
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(f"❌ Validation Error: {e}")
+                    except IOError as e:
+                        st.error(f"❌ IO Error: Could not save task. {e}")
                     except Exception as e:
                         st.error(f"❌ Unexpected error: {e}")
             
-            st.markdown("---")  # Separator between tasks
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+            if st.button("Cancel", key="cancel_task_modal"):
+                st.session_state.show_task_modal = False
+                st.session_state.editing_task_id = None
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+
 
 elif selected == "Settings":
     st.markdown("# ⚙️ Settings")
