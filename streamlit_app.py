@@ -1,6 +1,6 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
-from logic import log_activity, load_data, get_ai_chat_response, set_api_key, get_api_key
+from logic import log_activity, load_data, get_ai_chat_response, set_api_key, get_api_key, add_task, load_tasks, update_task_status, delete_task
 import logic # Ensure logic is imported for other functions like get_available_activities etc.
 import pandas as pd
 from datetime import datetime, timedelta # Added timedelta
@@ -62,8 +62,8 @@ st.markdown("""
 # Use streamlit-option-menu but style it to appear at bottom
 selected = option_menu(
     menu_title=None,
-    options=["Home", "Analysis", "Log", "Chat", "Settings"],
-    icons=["house-fill", "bar-chart-fill", "plus-circle-fill", "chat-dots-fill", "gear-fill"],
+    options=["Home", "Analysis", "Log", "Tasks", "Chat", "Settings"],
+    icons=["house-fill", "bar-chart-fill", "plus-circle-fill", "check2-square", "chat-dots-fill", "gear-fill"],
     default_index=0,
     orientation="horizontal",
     key="navigation",
@@ -333,6 +333,42 @@ elif selected == "Log":
     with col3:
         if st.button("😴 Good Sleep\n+25 pts", use_container_width=True, key="log_sleep"):
             log_and_refresh("Got good sleep")
+    
+    # Quick Add Task section
+    st.markdown("---")  # Separator
+    st.markdown('<div class="glass-panel" style="margin-top: 20px;">', unsafe_allow_html=True)
+    st.markdown("### ➕ Quick Add Task")
+    
+    with st.form(key="quick_add_task_form", clear_on_submit=True):
+        new_task_description = st.text_input(
+            "Enter new task description:", 
+            key="new_task_input_field",
+            placeholder="e.g., Buy groceries, Finish report", 
+            label_visibility="collapsed"
+        )
+        
+        add_task_button = st.form_submit_button("✨ Add Task to List", type="primary", use_container_width=True)
+        
+        if add_task_button:
+            if new_task_description.strip():  # Check if not just whitespace
+                try:
+                    logic.add_task(new_task_description.strip())
+                    st.session_state["flash"] = "✅ Task added successfully!"
+                    # Rerun to clear form and update any dependent UI if needed
+                    if hasattr(st, "rerun"):
+                        st.rerun()
+                    else:
+                        st.experimental_rerun()
+                except ValueError as e:
+                    st.error(f"❌ Invalid input: {e}")
+                except IOError as e:
+                    st.error(f"❌ Could not save task: {e}")
+                except Exception as e:
+                    st.error(f"❌ Unexpected error: {e}")
+            else:
+                st.warning("⚠️ Please enter a task description.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 elif selected == "Chat":
     st.markdown("# 💬 AI Assistant")
@@ -420,6 +456,56 @@ elif selected == "Chat":
                 st.rerun()
         
         st.markdown('</div>', unsafe_allow_html=True)
+
+elif selected == "Tasks":
+    st.markdown("# ✅ Your Tasks")
+    
+    # Load pending tasks
+    pending_tasks_df = logic.load_tasks(status_filter='pending')
+    
+    # Display tasks
+    st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
+    
+    if pending_tasks_df.empty:
+        st.info("No pending tasks! Add some from the Log page or enjoy your clear list! 👍")
+    else:
+        st.markdown("### 📋 Pending Tasks")
+        
+        # Display each task
+        for idx, task_row in pending_tasks_df.iterrows():
+            col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+            
+            with col1:
+                st.markdown(f"**{task_row['description']}**")
+            
+            with col2:
+                try:
+                    st.caption(f"Added: {task_row['created_at'].strftime('%Y-%m-%d %H:%M')}")
+                except AttributeError:
+                    # Fallback if created_at is not a datetime object
+                    st.caption(f"Added: {task_row['created_at']}")
+            
+            with col3:
+                if st.button("Mark as Done ✅", key=f"done_button_{task_row['task_id']}", use_container_width=True):
+                    try:
+                        logic.update_task_status(task_row['task_id'], 'completed')
+                        st.session_state["flash"] = "🎉 Task marked as complete!"
+                        st.session_state["celebrate"] = True
+                        # Rerun for compatibility
+                        if hasattr(st, "rerun"):
+                            st.rerun()
+                        else:
+                            st.experimental_rerun()
+                    except ValueError as e:
+                        st.error(f"❌ Invalid task operation: {e}")
+                    except IOError as e:
+                        st.error(f"❌ Could not update task: {e}")
+                    except Exception as e:
+                        st.error(f"❌ Unexpected error: {e}")
+            
+            st.markdown("---")  # Separator between tasks
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 elif selected == "Settings":
     st.markdown("# ⚙️ Settings")

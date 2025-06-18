@@ -42,7 +42,8 @@ import requests
 import json
 from datetime import datetime, date
 import csv
-from typing import List, Dict, Optional, Tuple
+import uuid
+from typing import List, Dict, Optional, Tuple, Any
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -63,7 +64,8 @@ def load_config() -> Dict:
         "api_key": "",
         "api_url": "https://openrouter.ai/api/v1/chat/completions",
         "model": "google/gemini-flash-1.5",
-        "csv_filename": "livslogg.csv"
+        "csv_filename": "livslogg.csv",
+        "tasks_csv_filename": "tasks.csv"
     }
     
     if CONFIG_FILE.exists():
@@ -166,6 +168,7 @@ config = load_config()
 API_URL = config.get("api_url", "https://openrouter.ai/api/v1/chat/completions")
 MODEL = config.get("model", "google/gemini-flash-1.5")
 CSV_FILENAME = config.get("csv_filename", "livslogg.csv")
+TASKS_CSV_FILENAME = config.get("tasks_csv_filename", "tasks.csv")
 
 # Activity categories
 ACTIVITY_CATEGORIES = ['Water', 'Cannabis', 'Cigarette', 'Alcohol', 'Sex', 'Walk', 'Food']
@@ -1073,3 +1076,332 @@ def get_ai_chat_response(user_message: str, temperature: float = 0.7, max_tokens
     except Exception as e:
         # General exception for any other errors
         return f"Error: An unexpected error occurred while contacting the AI: {e}"
+
+# --- TASK MANAGEMENT FUNCTIONS ---
+# Note: All timestamps are stored in local time (timezone-naive) for consistency
+# with the existing activity tracking system. Future enhancement could add
+# timezone support using pytz or zoneinfo.
+
+def add_task(description: str) -> None:
+    """
+    Add a new task to the tasks CSV file.
+    
+    Creates a new task with a unique ID and timestamp, then appends it to the
+    tasks CSV file. The task is created with 'pending' status by default.
+    
+    Args:
+        description: Text description of the task to add
+        
+    Returns:
+        None
+        
+    Raises:
+        ValueError: If description is empty or only whitespace
+        IOError: If the task cannot be saved to the CSV file due to I/O errors
+        
+    Example:
+        >>> add_task("Buy groceries")
+        >>> add_task("Finish report")
+    """
+    # Validate input
+    if not description or not description.strip():
+        raise ValueError("Task description cannot be empty")
+    
+    # Generate unique task ID
+    task_id = str(uuid.uuid4())
+    
+    # Get current timestamp (timezone-aware would be better, but keeping consistent with existing code)
+    created_at = datetime.now().isoformat()
+    
+    # Set initial status
+    status = 'pending'
+    
+    # Create task data with explicit column order
+    new_task_data = {
+        'task_id': task_id,
+        'description': description.strip(),  # Remove leading/trailing whitespace
+        'status': status,
+        'created_at': created_at
+    }
+    
+    # Convert to DataFrame with explicit column order
+    columns = ['task_id', 'description', 'status', 'created_at']
+    new_task_df = pd.DataFrame([new_task_data], columns=columns)
+    
+    try:
+        # Use a more atomic approach for header checking
+        file_exists = os.path.exists(TASKS_CSV_FILENAME)
+        
+        if file_exists:
+            # File exists, check if it's empty
+            try:
+                existing_df = pd.read_csv(TASKS_CSV_FILENAME, nrows=0)
+                needs_header = False
+            except (pd.errors.EmptyDataError, pd.errors.ParserError):
+                # File is empty or corrupted
+                needs_header = True
+        else:
+            # File doesn't exist
+            needs_header = True
+        
+        # Append to CSV file with explicit column order
+        new_task_df.to_csv(
+            TASKS_CSV_FILENAME, 
+            mode='a', 
+            header=needs_header, 
+            index=False,
+            columns=columns  # Ensure consistent column order
+        )
+        
+    except PermissionError as e:
+        raise IOError(f"Permission denied: Cannot write to {TASKS_CSV_FILENAME}") from e
+    except IOError as e:
+        raise IOError(f"Failed to save task to CSV: {e}") from e
+    except Exception as e:
+        raise IOError(f"Unexpected error saving task: {e}") from e
+
+
+def load_tasks(status_filter: Optional[str] = None) -> pd.DataFrame:
+    """
+    Load tasks from the CSV file, optionally filtering by status.
+    
+    Reads tasks from the tasks CSV file, parses timestamps, and returns
+    a DataFrame sorted by creation date (newest first).
+    
+    Args:
+        status_filter: Optional status to filter by ('pending', 'completed', etc.)
+                      If None, returns all tasks
+        
+    Returns:
+        pd.DataFrame: DataFrame containing tasks with columns:
+                     - task_id: Unique task identifier
+                     - description: Task description text
+                     - status: Current task status
+                     - created_at: Creation timestamp (datetime object)
+                     Returns empty DataFrame with correct columns if file doesn't exist
+        
+    Example:
+        >>> # Get all tasks
+        >>> all_tasks = load_tasks()
+        
+        >>> # Get only pending tasks
+        >>> pending_tasks = load_tasks(status_filter='pending')
+        
+        >>> # Get completed tasks
+        >>> completed_tasks = load_tasks(status_filter='completed')
+    """
+    # Define expected columns
+    task_columns = ['task_id', 'description', 'status', 'created_at']
+    
+    # Validate status_filter if provided
+    valid_statuses = ['pending', 'completed', 'in_progress', 'cancelled']
+    if status_filter is not None and status_filter not in valid_statuses:
+        # Log warning but don't fail - just return empty results
+        print(f"Warning: Invalid status filter '{status_filter}'. Valid options: {valid_statuses}")
+        return pd.DataFrame(columns=task_columns)
+    
+    # Check if file exists
+    if not os.path.exists(TASKS_CSV_FILENAME):
+        return pd.DataFrame(columns=task_columns)
+    
+    try:
+        # Read CSV file
+        df = pd.read_csv(TASKS_CSV_FILENAME)
+        
+        # Return empty DataFrame with columns if file is empty
+        if df.empty:
+            return pd.DataFrame(columns=task_columns)
+        
+        # Ensure all expected columns exist
+        missing_columns = set(task_columns) - set(df.columns)
+        if missing_columns:
+            # File has wrong structure, return empty DataFrame
+            print(f"Warning: Tasks CSV missing columns: {missing_columns}")
+            return pd.DataFrame(columns=task_columns)
+        
+        # Parse created_at to datetime - handle both ISO format and pandas default format
+        df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce', format='mixed')
+        
+        # Drop rows where created_at couldn't be parsed
+        invalid_dates = df['created_at'].isna().sum()
+        if invalid_dates > 0:
+            print(f"Warning: Dropped {invalid_dates} tasks with invalid timestamps")
+        df = df.dropna(subset=['created_at'])
+        
+        # Validate task_id and description are not empty
+        df = df[df['task_id'].notna() & (df['task_id'] != '')]
+        df = df[df['description'].notna() & (df['description'].str.strip() != '')]
+        
+        # Apply status filter if provided
+        if status_filter is not None:
+            df = df[df['status'] == status_filter]
+        
+        # Sort by created_at descending (newest first)
+        df = df.sort_values(by='created_at', ascending=False)
+        
+        # Ensure only expected columns are returned in the correct order
+        return df[task_columns]
+        
+    except pd.errors.EmptyDataError:
+        # File exists but is empty
+        return pd.DataFrame(columns=task_columns)
+    except pd.errors.ParserError as e:
+        # CSV file is corrupted
+        print(f"Error: Tasks CSV file is corrupted: {e}")
+        return pd.DataFrame(columns=task_columns)
+    except PermissionError:
+        # No read permission
+        print(f"Error: Permission denied reading {TASKS_CSV_FILENAME}")
+        return pd.DataFrame(columns=task_columns)
+    except Exception as e:
+        # Other unexpected errors
+        print(f"Error loading tasks: {e}")
+        return pd.DataFrame(columns=task_columns)
+
+
+def update_task_status(task_id: str, new_status: str) -> None:
+    """
+    Update the status of a specific task.
+    
+    Loads all tasks, updates the status of the specified task, and saves
+    the entire task list back to the CSV file.
+    
+    Args:
+        task_id: Unique identifier of the task to update
+        new_status: New status to set (e.g., 'completed', 'pending')
+        
+    Returns:
+        None
+        
+    Raises:
+        ValueError: If the task_id is not found or new_status is invalid
+        IOError: If the updated tasks cannot be saved to the CSV file
+        
+    Example:
+        >>> # Mark a task as completed
+        >>> update_task_status("abc123-def456", "completed")
+        
+        >>> # Reopen a completed task
+        >>> update_task_status("abc123-def456", "pending")
+    """
+    # Validate inputs
+    if not task_id or not isinstance(task_id, str):
+        raise ValueError("Task ID must be a non-empty string")
+    
+    valid_statuses = ['pending', 'completed', 'in_progress', 'cancelled']
+    if new_status not in valid_statuses:
+        raise ValueError(f"Invalid status '{new_status}'. Valid options: {valid_statuses}")
+    
+    # Load all tasks (without filter to ensure we get all tasks)
+    df = load_tasks(status_filter=None)
+    
+    # Check if task exists
+    if df.empty:
+        raise ValueError("No tasks found in the system")
+    
+    # Ensure task_id is string type in the DataFrame for comparison
+    df['task_id'] = df['task_id'].astype(str)
+    
+    if task_id not in df['task_id'].values:
+        raise ValueError(f"Task with ID '{task_id}' not found")
+    
+    # Update the status
+    df.loc[df['task_id'] == task_id, 'status'] = new_status
+    
+    # Also update a 'updated_at' timestamp if we want to track modifications
+    # (not adding this to keep backward compatibility, but could be useful)
+    
+    try:
+        # Sort by created_at to maintain consistent order in the file
+        df = df.sort_values(by='created_at', ascending=True)
+        
+        # Convert created_at back to ISO format string for consistency
+        df_to_save = df.copy()
+        df_to_save['created_at'] = df_to_save['created_at'].dt.strftime('%Y-%m-%dT%H:%M:%S.%f')
+        
+        # Save the entire DataFrame back to CSV with explicit column order
+        columns = ['task_id', 'description', 'status', 'created_at']
+        df_to_save.to_csv(
+            TASKS_CSV_FILENAME, 
+            index=False, 
+            header=True,
+            columns=columns  # Ensure consistent column order
+        )
+        
+    except PermissionError as e:
+        raise IOError(f"Permission denied: Cannot write to {TASKS_CSV_FILENAME}") from e
+    except IOError as e:
+        raise IOError(f"Failed to save updated tasks to CSV: {e}") from e
+    except Exception as e:
+        raise IOError(f"Unexpected error updating task status: {e}") from e
+
+
+def delete_task(task_id: str) -> None:
+    """
+    Delete a specific task from the tasks CSV file.
+    
+    Loads all tasks, removes the specified task, and saves the remaining
+    tasks back to the CSV file.
+    
+    Args:
+        task_id: Unique identifier of the task to delete
+        
+    Returns:
+        None
+        
+    Raises:
+        ValueError: If the task_id is not found
+        IOError: If the updated tasks cannot be saved to the CSV file
+        
+    Example:
+        >>> # Delete a task
+        >>> delete_task("abc123-def456")
+    """
+    # Validate input
+    if not task_id or not isinstance(task_id, str):
+        raise ValueError("Task ID must be a non-empty string")
+    
+    # Load all tasks
+    df = load_tasks(status_filter=None)
+    
+    # Check if task exists
+    if df.empty:
+        raise ValueError("No tasks found in the system")
+    
+    # Ensure task_id is string type in the DataFrame for comparison
+    df['task_id'] = df['task_id'].astype(str)
+    
+    if task_id not in df['task_id'].values:
+        raise ValueError(f"Task with ID '{task_id}' not found")
+    
+    # Remove the task
+    df = df[df['task_id'] != task_id]
+    
+    try:
+        if df.empty:
+            # If no tasks remain, create an empty file with headers
+            empty_df = pd.DataFrame(columns=['task_id', 'description', 'status', 'created_at'])
+            empty_df.to_csv(TASKS_CSV_FILENAME, index=False, header=True)
+        else:
+            # Sort by created_at to maintain consistent order in the file
+            df = df.sort_values(by='created_at', ascending=True)
+            
+            # Convert created_at back to ISO format string for consistency
+            df_to_save = df.copy()
+            df_to_save['created_at'] = df_to_save['created_at'].dt.strftime('%Y-%m-%dT%H:%M:%S.%f')
+            
+            # Save the remaining tasks back to CSV with explicit column order
+            columns = ['task_id', 'description', 'status', 'created_at']
+            df_to_save.to_csv(
+                TASKS_CSV_FILENAME, 
+                index=False, 
+                header=True,
+                columns=columns
+            )
+        
+    except PermissionError as e:
+        raise IOError(f"Permission denied: Cannot write to {TASKS_CSV_FILENAME}") from e
+    except IOError as e:
+        raise IOError(f"Failed to save tasks after deletion: {e}") from e
+    except Exception as e:
+        raise IOError(f"Unexpected error deleting task: {e}") from e
