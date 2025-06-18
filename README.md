@@ -92,17 +92,21 @@ python cli.py analyze --totals
 Modern, interactive web application with rich visualizations.
 
 ### Features:
-- **📝 Smart Logging**: Natural language input with instant AI analysis
-- **📊 Interactive Charts**: Plotly-powered visualizations with zoom/pan
-- **🔍 Advanced Filtering**: Date ranges, activity types, custom periods
-- **📱 Mobile Friendly**: Responsive design for all devices
-- **🎨 Professional UI**: Clean, modern interface with animations
+- **📝 Smart Logging**: Natural language input with instant AI analysis for activities.
+- **📊 Interactive Charts**: Visualizations for activity trends.
+- **🔍 Advanced Filtering**: Date ranges, activity types for analysis.
+- **📱 Mobile Friendly**: Responsive design for all devices.
+- **🎨 Professional UI**: Clean, modern interface.
+- ✅ **Task Management**: Add, edit, and track your to-dos with due dates and priorities.
+- 💬 **AI Assistant**: Interact with the AI health coach for advice and support.
 
 ### Tabs:
-1. **📊 Overview**: Key metrics and activity distribution
-2. **📅 Today**: Chronological timeline of today's activities
-3. **📈 Totals**: Bar charts and data tables of cumulative quantities
-4. **📉 Timeline**: Trend analysis with multi-activity comparisons
+1. **🏠 Home / Overview**: Key metrics and quick actions.
+2. **📊 Analysis**: Detailed charts and statistical views for activities.
+3. **✍️ Log**: Log new activities and quick-add tasks.
+4. **✅ Tasks**: Manage your to-do list with due dates and priorities.
+5. **💬 Chat**: Interact with the AI health coach.
+6. **⚙️ Settings**: Configure API keys and application preferences.
 
 ## 🧠 Core Logic (`logic.py`)
 
